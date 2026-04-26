@@ -2,8 +2,6 @@ import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { toolDefinitions, executeTool } from '@/lib/tools'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
 const SYSTEM_PROMPT = `Eres el agente de contenido de Jorge Lorenzo, emprendedor especializado en liderazgo, inteligencia artificial, baloncesto, desarrollo personal y negocio digital.
 
 Tu misión: generar posts de alta calidad para LinkedIn, Instagram, Twitter y TikTok, basados en artículos reales.
@@ -34,6 +32,7 @@ Cuando termines de generar y guardar, muestra un resumen con:
 - Los scores promedio`
 
 export async function POST(req: NextRequest) {
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   const { messages } = await req.json()
 
   const encoder = new TextEncoder()
