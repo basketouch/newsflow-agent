@@ -77,7 +77,7 @@ function ScoreBar({ score, label }: { score?: number; label: string }) {
 }
 
 // ─── Post detail modal ────────────────────────────────────────────────────────
-function PostDetail({ post, onClose }: { post: ContentPost; onClose: () => void }) {
+function PostDetail({ post, onClose, onDelete }: { post: ContentPost; onClose: () => void; onDelete: (id: string) => void }) {
   const [tab, setTab] = useState<'linkedin' | 'instagram' | 'twitter' | 'tiktok'>('linkedin')
   const [copied, setCopied] = useState(false)
 
@@ -175,6 +175,12 @@ function PostDetail({ post, onClose }: { post: ContentPost; onClose: () => void 
               Fuente ↗
             </a>
           )}
+          <button
+            onClick={() => onDelete(post.id)}
+            className="px-4 py-2.5 rounded-xl border border-red-500/20 hover:border-red-500/50 hover:bg-red-500/10 text-sm text-red-500 transition-colors"
+          >
+            Eliminar
+          </button>
         </div>
       </div>
     </div>
@@ -216,6 +222,13 @@ export default function Home() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, currentToolSteps])
+
+  // ── Delete post ──
+  const deletePost = async (id: string) => {
+    await supabase.from('content_daily').delete().eq('id', id)
+    setPosts(prev => prev.filter(p => p.id !== id))
+    if (selectedPost?.id === id) setSelectedPost(null)
+  }
 
   // ── Stats ──
   const pending   = posts.filter(p => p.status === 'pending_review').length
@@ -410,18 +423,30 @@ export default function Home() {
                     : null
 
                   return (
-                    <button
+                    <div
                       key={post.id}
+                      className="group relative px-4 py-3 hover:bg-zinc-800/40 transition-colors cursor-pointer"
                       onClick={() => setSelectedPost(post)}
-                      className="w-full text-left px-4 py-3 hover:bg-zinc-800/40 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs text-zinc-200 font-medium leading-snug line-clamp-2 flex-1">
                           {post.topic}
                         </p>
-                        {avg && (
-                          <span className="text-xs font-bold text-purple-400 flex-shrink-0">{avg}</span>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {avg && (
+                            <span className="text-xs font-bold text-purple-400">{avg}</span>
+                          )}
+                          {/* Botón borrar — visible en hover */}
+                          <button
+                            onClick={e => { e.stopPropagation(); deletePost(post.id) }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-red-400 p-0.5"
+                            title="Eliminar post"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                              <path d="M1.5 3h9M5 3V2h2v1M2.5 3l.5 7h6l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 mt-2">
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-md border font-medium ${st.color}`}>
@@ -436,7 +461,7 @@ export default function Home() {
                         </div>
                         <span className="text-[10px] text-zinc-700 ml-auto">{post.date}</span>
                       </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -566,7 +591,11 @@ export default function Home() {
 
       {/* ── Post detail modal ── */}
       {selectedPost && (
-        <PostDetail post={selectedPost} onClose={() => setSelectedPost(null)} />
+        <PostDetail
+          post={selectedPost}
+          onClose={() => setSelectedPost(null)}
+          onDelete={(id) => { deletePost(id); setSelectedPost(null) }}
+        />
       )}
     </div>
   )
