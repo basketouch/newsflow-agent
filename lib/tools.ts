@@ -1,9 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
 
 // ─── Tool definitions para OpenAI ───────────────────────────────────────────
 
@@ -80,6 +82,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       const sourceType = (args.source_type as string) || 'todos'
       const soloNoUsados = args.solo_no_usados as boolean
 
+      const supabase = getSupabase()
       let query = supabase
         .from('articles')
         .select('id, title, description, summary, url, source_type, source_name, category, created_at')
@@ -126,7 +129,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
         published_to: [],
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('content_daily')
         .insert(record)
         .select('id')
