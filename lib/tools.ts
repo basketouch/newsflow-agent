@@ -12,7 +12,7 @@ function getSupabase() {
 export const customToolDefinitions = [
   {
     name: 'leer_articulos',
-    description: 'Lee los artículos disponibles en Supabase. Úsalo para obtener noticias recientes guardadas desde RSS o URLs manuales. Si el usuario pide algo que no está en Supabase, usa web_search en su lugar.',
+    description: 'Lee los artículos disponibles en Supabase. Por defecto solo muestra los aprobados por Jorge. Úsalo para obtener noticias curadas. Si el usuario pide algo que no está en Supabase, usa web_search en su lugar.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -28,6 +28,10 @@ export const customToolDefinitions = [
         solo_no_usados: {
           type: 'boolean',
           description: 'Si true, solo artículos que no están en el newsletter.',
+        },
+        solo_aprobadas: {
+          type: 'boolean',
+          description: 'Si true (por defecto), solo artículos aprobados por Jorge. Si false, muestra todos.',
         },
       },
       required: [],
@@ -75,11 +79,13 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       const limite = (args.limite as number) || 10
       const sourceType = (args.source_type as string) || 'todos'
       const soloNoUsados = args.solo_no_usados as boolean
+      const soloAprobadas = args.solo_aprobadas !== false // default true
 
       const supabase = getSupabase()
       let query = supabase
         .from('articles')
-        .select('id, title, description, summary, url, source_type, source_name, category, created_at')
+        .select('id, title, description, summary, url, source_type, source_name, category, relevance_score, created_at')
+        .order('relevance_score', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(limite)
 
@@ -89,6 +95,9 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       if (soloNoUsados) {
         query = query.eq('selected_for_newsletter', false)
       }
+      if (soloAprobadas) {
+        query = query.eq('approved', true)
+      }
 
       const { data, error } = await query
 
@@ -96,7 +105,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       if (!data || data.length === 0) return 'No hay artículos disponibles.'
 
       const resumen = data.map((a, i) =>
-        `[${i + 1}] ${a.title}\nFuente: ${a.source_name} (${a.source_type})\nResumen: ${a.summary || a.description || '(sin resumen)'}\nURL: ${a.url}\n`
+        `[${i + 1}] ${a.title}${a.relevance_score ? ` [score: ${a.relevance_score}]` : ''}\nFuente: ${a.source_name} (${a.source_type})\nResumen: ${a.summary || a.description || '(sin resumen)'}\nURL: ${a.url}\n`
       ).join('\n')
 
       return `Encontré ${data.length} artículos:\n\n${resumen}`
