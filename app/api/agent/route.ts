@@ -18,6 +18,11 @@ CUÁNDO USAR CADA HERRAMIENTA:
 - web_search: cuando el usuario menciona algo concreto ("Lakers", "Apple", "IA hoy") → busca y genera SIN mostrar las fuentes al usuario
 - leer_articulos: cuando dice "mis artículos", "NewsFlow", "lo que tengo guardado"
 
+FORMATO OBLIGATORIO:
+- NUNCA uses etiquetas <cite>, <source> ni ningún markup de cita en los posts
+- Escribe texto limpio, listo para copiar y publicar directamente
+- Sin referencias a fuentes dentro del texto
+
 ESTILO DE JORGE:
 - Voz directa, clara, auténtica
 - Conecta siempre con liderazgo y alto rendimiento
@@ -35,6 +40,15 @@ RESPUESTA FINAL (solo esto):
 ✅ X posts generados y guardados
 - [tema 1] — scores: LI:X IG:X X:X TK:X
 - [tema 2] — scores: LI:X IG:X X:X TK:X`
+
+// ─── Limpia etiquetas de cita que añade web_search ──────────────────────────
+function stripCitations(text: string): string {
+  return text
+    .replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1')  // <cite index="x">texto</cite> → texto
+    .replace(/<cite[^>]*\/>/g, '')                 // <cite /> vacíos
+    .replace(/\[\d+\]/g, '')                       // [1], [2], etc.
+    .trim()
+}
 
 // Herramienta de búsqueda web nativa de Anthropic
 const WEB_SEARCH_TOOL = {
@@ -99,10 +113,12 @@ export async function POST(req: NextRequest) {
 
           // Si el agente terminó → enviar respuesta final
           if (response.stop_reason === 'end_turn') {
-            const text = response.content
-              .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-              .map(b => b.text)
-              .join('')
+            const text = stripCitations(
+              response.content
+                .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+                .map(b => b.text)
+                .join('')
+            )
             send({ type: 'message', content: text })
             break
           }
@@ -117,8 +133,15 @@ export async function POST(req: NextRequest) {
               // web_search es server-side, Anthropic lo maneja; solo procesamos las custom
               if (block.name === 'web_search') continue
 
+              // Limpiar citas de los campos de texto antes de guardar
+              const cleanInput = Object.fromEntries(
+                Object.entries(block.input as Record<string, unknown>).map(([k, v]) => [
+                  k, typeof v === 'string' ? stripCitations(v) : v,
+                ])
+              )
+
               // Ejecutar herramienta custom
-              const result = await executeTool(block.name, block.input as Record<string, unknown>)
+              const result = await executeTool(block.name, cleanInput)
               send({ type: 'tool_result', tool: block.name, result: result.substring(0, 200) })
 
               toolResults.push({
