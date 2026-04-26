@@ -49,6 +49,7 @@ const QUICK_PROMPTS = [
 ]
 
 const TOOL_LABELS: Record<string, string> = {
+  web_search: '🌐 Buscando en la web...',
   leer_articulos: '📰 Leyendo artículos...',
   guardar_post: '💾 Guardando post...',
 }

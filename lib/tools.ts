@@ -7,73 +7,67 @@ function getSupabase() {
   )
 }
 
-// ─── Tool definitions para OpenAI ───────────────────────────────────────────
+// ─── Tool definitions para Claude (Anthropic format) ────────────────────────
 
-export const toolDefinitions = [
+export const customToolDefinitions = [
   {
-    type: 'function' as const,
-    function: {
-      name: 'leer_articulos',
-      description: 'Lee los artículos disponibles en Supabase. Úsalo para obtener noticias recientes guardadas desde Gmail, RSS o URLs manuales.',
-      parameters: {
-        type: 'object',
-        properties: {
-          limite: {
-            type: 'number',
-            description: 'Número de artículos a leer (máximo 20). Por defecto 10.',
-          },
-          source_type: {
-            type: 'string',
-            enum: ['gmail', 'rss', 'url', 'todos'],
-            description: 'Tipo de fuente. "todos" para ver todas.',
-          },
-          solo_no_usados: {
-            type: 'boolean',
-            description: 'Si true, solo artículos que no están en el newsletter.',
-          },
+    name: 'leer_articulos',
+    description: 'Lee los artículos disponibles en Supabase. Úsalo para obtener noticias recientes guardadas desde RSS o URLs manuales. Si el usuario pide algo que no está en Supabase, usa web_search en su lugar.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limite: {
+          type: 'number',
+          description: 'Número de artículos a leer (máximo 20). Por defecto 10.',
         },
-        required: [],
+        source_type: {
+          type: 'string',
+          enum: ['gmail', 'rss', 'url', 'todos'],
+          description: 'Tipo de fuente. "todos" para ver todas.',
+        },
+        solo_no_usados: {
+          type: 'boolean',
+          description: 'Si true, solo artículos que no están en el newsletter.',
+        },
       },
+      required: [],
     },
   },
   {
-    type: 'function' as const,
-    function: {
-      name: 'guardar_post',
-      description: 'Guarda el contenido generado en Supabase (tabla content_daily). Llama a esta función una vez por tema, con todos los posts de las plataformas.',
-      parameters: {
-        type: 'object',
-        properties: {
-          topic: {
-            type: 'string',
-            description: 'Tema del post en 5-7 palabras',
-          },
-          source_url: {
-            type: 'string',
-            description: 'URL del artículo fuente (si existe)',
-          },
-          linkedin_post: { type: 'string', description: 'Post para LinkedIn (300-600 chars)' },
-          linkedin_score: { type: 'number', description: 'Score calidad LinkedIn (1-10)' },
-          instagram_post: { type: 'string', description: 'Post para Instagram (100-150 chars)' },
-          instagram_image_prompt: { type: 'string', description: 'Descripción imagen ideal en inglés' },
-          instagram_score: { type: 'number', description: 'Score calidad Instagram (1-10)' },
-          twitter_post: { type: 'string', description: 'Tweet max 280 chars' },
-          twitter_score: { type: 'number', description: 'Score calidad Twitter (1-10)' },
-          tiktok_script: { type: 'string', description: 'Guion TikTok 60 segundos' },
-          tiktok_score: { type: 'number', description: 'Score calidad TikTok (1-10)' },
-          hashtags: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Array de hashtags sin #',
-          },
+    name: 'guardar_post',
+    description: 'Guarda el contenido generado en Supabase (tabla content_daily). Llama a esta función una vez por tema, con todos los posts de las plataformas.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        topic: {
+          type: 'string',
+          description: 'Tema del post en 5-7 palabras',
         },
-        required: ['topic', 'linkedin_post', 'linkedin_score'],
+        source_url: {
+          type: 'string',
+          description: 'URL del artículo o búsqueda web que usaste como fuente',
+        },
+        linkedin_post: { type: 'string', description: 'Post para LinkedIn (300-600 chars)' },
+        linkedin_score: { type: 'number', description: 'Score calidad LinkedIn (1-10)' },
+        instagram_post: { type: 'string', description: 'Post para Instagram (100-150 chars)' },
+        instagram_image_prompt: { type: 'string', description: 'Descripción imagen ideal en inglés' },
+        instagram_score: { type: 'number', description: 'Score calidad Instagram (1-10)' },
+        twitter_post: { type: 'string', description: 'Tweet max 280 chars' },
+        twitter_score: { type: 'number', description: 'Score calidad Twitter (1-10)' },
+        tiktok_script: { type: 'string', description: 'Guion TikTok 60 segundos' },
+        tiktok_score: { type: 'number', description: 'Score calidad TikTok (1-10)' },
+        hashtags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array de hashtags sin #',
+        },
       },
+      required: ['topic', 'linkedin_post', 'linkedin_score'],
     },
   },
 ]
 
-// ─── Ejecución de herramientas ───────────────────────────────────────────────
+// ─── Ejecución de herramientas custom ───────────────────────────────────────
 
 export async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
   switch (name) {

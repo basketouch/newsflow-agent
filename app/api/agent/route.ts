@@ -1,17 +1,23 @@
 import { NextRequest } from 'next/server'
-import OpenAI from 'openai'
-import { toolDefinitions, executeTool } from '@/lib/tools'
+import Anthropic from '@anthropic-ai/sdk'
+import { customToolDefinitions, executeTool } from '@/lib/tools'
 
 const SYSTEM_PROMPT = `Eres el agente de contenido de Jorge Lorenzo, emprendedor especializado en liderazgo, inteligencia artificial, baloncesto, desarrollo personal y negocio digital.
 
-Tu misión: generar posts de alta calidad para LinkedIn, Instagram, Twitter y TikTok, basados en artículos reales.
+Tu misión: generar posts de alta calidad para LinkedIn, Instagram, Twitter y TikTok.
 
 PROCESO:
-1. Si el usuario pide generar contenido, PRIMERO usa leer_articulos para ver qué hay disponible
-2. Selecciona los artículos más relevantes (máximo 3 por petición)
-3. Para cada artículo, genera posts adaptados a cada plataforma
-4. SIEMPRE guarda cada post con guardar_post antes de informar al usuario
-5. Informa el resultado con los scores y un resumen de lo generado
+1. Si el usuario pide contenido sobre algo concreto (noticia, tema, persona), usa web_search para buscar información actualizada
+2. Si el usuario pide generar de los artículos guardados, usa leer_articulos
+3. Selecciona los artículos/noticias más relevantes (máximo 3 por petición)
+4. Para cada tema, genera posts adaptados a cada plataforma
+5. SIEMPRE guarda cada post con guardar_post antes de informar al usuario
+6. Informa el resultado con los scores y un resumen de lo generado
+
+CUÁNDO USAR CADA HERRAMIENTA:
+- web_search: cuando el usuario menciona algo específico ("los Lakers anoche", "Apple hoy", "última noticia de IA") o quiere contenido fresco
+- leer_articulos: cuando el usuario dice "de mis artículos", "de NewsFlow", "de lo que tengo guardado"
+- Si no está claro, pregunta o usa leer_articulos por defecto
 
 ESTILO DE JORGE:
 - Voz directa, clara, auténtica
@@ -31,8 +37,20 @@ Cuando termines de generar y guardar, muestra un resumen con:
 - Los temas
 - Los scores promedio`
 
+// Herramienta de búsqueda web nativa de Anthropic
+const WEB_SEARCH_TOOL = {
+  type: 'web_search_20250305' as const,
+  name: 'web_search' as const,
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  web_search: '🌐 Buscando en la web...',
+  leer_articulos: '📰 Leyendo artículos...',
+  guardar_post: '💾 Guardando post...',
+}
+
 export async function POST(req: NextRequest) {
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const { messages } = await req.json()
 
   const encoder = new TextEncoder()
@@ -44,58 +62,82 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const conversationMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...messages,
-        ]
+        // Convertir historial de mensajes al formato de Anthropic
+        const conversationMessages: Anthropic.MessageParam[] = messages.map(
+          (m: { role: string; content: string }) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })
+        )
 
-        // Bucle agentico
+        // Bucle agéntico
         while (true) {
-          const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+          const response = await anthropic.messages.create({
+            model: 'claude-haiku-4-5',
+            max_tokens: 4096,
+            system: SYSTEM_PROMPT,
             messages: conversationMessages,
-            tools: toolDefinitions,
-            tool_choice: 'auto',
-            max_tokens: 4000,
+            tools: [WEB_SEARCH_TOOL, ...customToolDefinitions],
           })
 
-          const choice = response.choices[0]
-          const message = choice.message
+          // Añadir respuesta completa al historial (incluye tool_use y tool_result de web_search)
+          conversationMessages.push({
+            role: 'assistant',
+            content: response.content,
+          })
 
-          // Añadir respuesta a la conversación
-          conversationMessages.push(message)
+          // Notificar al frontend sobre herramientas usadas
+          for (const block of response.content) {
+            if (block.type === 'tool_use') {
+              const label = TOOL_LABELS[block.name] ?? `🔧 ${block.name}`
+              send({ type: 'tool_start', tool: block.name, label, args: block.input })
+            }
+            // web_search_tool_result viene embebido en el contenido (server-side)
+            if (block.type === 'web_search_tool_result') {
+              send({ type: 'tool_result', tool: 'web_search', result: 'Resultados obtenidos ✓' })
+            }
+          }
 
-          // Si Claude quiere usar herramientas
-          if (choice.finish_reason === 'tool_calls' && message.tool_calls) {
-            for (const toolCall of message.tool_calls) {
-              if (toolCall.type !== 'function') continue
-              const toolName = toolCall.function.name
-              const toolArgs = JSON.parse(toolCall.function.arguments)
+          // Si el agente terminó → enviar respuesta final
+          if (response.stop_reason === 'end_turn') {
+            const text = response.content
+              .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+              .map(b => b.text)
+              .join('')
+            send({ type: 'message', content: text })
+            break
+          }
 
-              // Enviar al frontend que está usando una herramienta
-              send({ type: 'tool_start', tool: toolName, args: toolArgs })
+          // Si hay tool_use de herramientas custom → ejecutarlas
+          if (response.stop_reason === 'tool_use') {
+            const toolResults: Anthropic.ToolResultBlockParam[] = []
 
-              // Ejecutar herramienta
-              const result = await executeTool(toolName, toolArgs)
+            for (const block of response.content) {
+              if (block.type !== 'tool_use') continue
 
-              // Enviar resultado al frontend
-              send({ type: 'tool_result', tool: toolName, result: result.substring(0, 200) })
+              // web_search es server-side, Anthropic lo maneja; solo procesamos las custom
+              if (block.name === 'web_search') continue
 
-              // Añadir resultado a la conversación
-              conversationMessages.push({
-                role: 'tool',
-                tool_call_id: toolCall.id,
+              // Ejecutar herramienta custom
+              const result = await executeTool(block.name, block.input as Record<string, unknown>)
+              send({ type: 'tool_result', tool: block.name, result: result.substring(0, 200) })
+
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: block.id,
                 content: result,
               })
             }
-            // Continuar el bucle para que el agente procese los resultados
-            continue
-          }
 
-          // Si el agente terminó — enviar respuesta final
-          if (choice.finish_reason === 'stop') {
-            send({ type: 'message', content: message.content || '' })
-            break
+            // Añadir resultados de herramientas custom al historial
+            if (toolResults.length > 0) {
+              conversationMessages.push({
+                role: 'user',
+                content: toolResults,
+              })
+            }
+
+            continue
           }
 
           break
