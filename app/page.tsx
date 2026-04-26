@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import Nav from '@/components/Nav'
 
 // ─── Supabase client ────────────────────────────────────────────────────────
 const supabase = createClient(
@@ -328,10 +329,11 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-xs font-bold">N</div>
           <div>
-            <span className="text-sm font-semibold">NewsFlow Agent</span>
+            <span className="text-sm font-semibold">NewsFlow</span>
             <span className="text-zinc-600 text-xs ml-2">· Jorge Lorenzo</span>
           </div>
         </div>
+        <Nav />
 
         {/* Stats */}
         <div className="flex items-center gap-6">
